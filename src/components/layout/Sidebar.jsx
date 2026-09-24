@@ -1,10 +1,38 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getReservations } from '../../services/reservationService';
+import { getProsumers } from '../../services/prosumerService';
 
 export default function Sidebar({ isOpen, onClose }) {
   const { user, role, logout, isBackoffice, isOperator } = useAuth();
   const navigate = useNavigate();
+  const [pendingReservationsCount, setPendingReservationsCount] = useState(0);
+  const [pendingActivationsCount, setPendingActivationsCount] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchCounts() {
+      try {
+        if (isOperator) {
+          const resList = await getReservations({ status: 'Pending' });
+          if (isMounted) setPendingReservationsCount(resList.length);
+        }
+        if (isBackoffice) {
+          const proList = await getProsumers({ status: 'Pending' });
+          if (isMounted) setPendingActivationsCount(proList.length);
+        }
+      } catch (err) {
+        // Silently fallback if not authenticated
+      }
+    }
+    fetchCounts();
+    const interval = setInterval(fetchCounts, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isOperator, isBackoffice]);
 
   const handleLogout = () => {
     logout();
@@ -98,7 +126,7 @@ export default function Sidebar({ isOpen, onClose }) {
               >
                 <i className="bi bi-clock-history"></i>
                 <span>Pending Activations</span>
-                <span className="app-sidebar__badge">2</span>
+                {pendingActivationsCount > 0 && <span className="app-sidebar__badge">{pendingActivationsCount}</span>}
               </NavLink>
 
               <div className="app-sidebar__section-title">Microgrid Assets</div>
@@ -160,7 +188,7 @@ export default function Sidebar({ isOpen, onClose }) {
               >
                 <i className="bi bi-hourglass-split"></i>
                 <span>Pending Reservations</span>
-                <span className="app-sidebar__badge">2</span>
+                {pendingReservationsCount > 0 && <span className="app-sidebar__badge">{pendingReservationsCount}</span>}
               </NavLink>
 
               <NavLink
