@@ -51,6 +51,11 @@ const STATUS_CONFIG = {
     icon: 'bi-slash-circle-fill',
     label: 'Unavailable',
   },
+  Maintenance: {
+    className: 'status-badge--cancelled',
+    icon: 'bi-tools',
+    label: 'Maintenance',
+  },
 };
 
 export default function StatusBadge({ status }) {

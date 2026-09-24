@@ -31,7 +31,7 @@ export function AuthProvider({ children }) {
     setSession(null);
   }, []);
 
-  const isBackoffice = session?.role === 'BackofficeOfficer';
+  const isBackoffice = session?.role === 'BackofficeOfficer' || session?.role === 'Backoffice';
   const isOperator = session?.role === 'GridOperator';
 
   return (

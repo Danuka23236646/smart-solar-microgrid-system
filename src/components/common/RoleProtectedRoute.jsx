@@ -19,7 +19,14 @@ export default function RoleProtectedRoute({ allowedRoles = [], children }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!allowedRoles.includes(role)) {
+  const hasAccess = allowedRoles.some((r) => {
+    if ((r === 'BackofficeOfficer' || r === 'Backoffice') && (role === 'Backoffice' || role === 'BackofficeOfficer')) {
+      return true;
+    }
+    return r === role;
+  });
+
+  if (!hasAccess) {
     return <Navigate to="/unauthorized" replace />;
   }
 

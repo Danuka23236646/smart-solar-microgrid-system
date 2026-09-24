@@ -40,6 +40,14 @@ export default function BackofficeDashboardPage() {
 
   useEffect(() => {
     loadData();
+
+    const handleSlotsUpdated = () => {
+      loadData();
+    };
+    window.addEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    return () => {
+      window.removeEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    };
   }, []);
 
   const activeProsumersCount = prosumers.filter((p) => p.status === 'Active').length;

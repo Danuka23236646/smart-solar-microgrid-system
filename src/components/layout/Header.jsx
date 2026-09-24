@@ -60,6 +60,11 @@ export default function Header({ onToggleSidebar }) {
             <i className="bi bi-shield-check"></i>
             <span>Backoffice Officer</span>
           </span>
+        ) : role === 'Prosumer' ? (
+          <span className="role-badge" style={{ backgroundColor: 'rgba(245, 166, 35, 0.15)', color: '#d97706', border: '1px solid rgba(245, 166, 35, 0.3)' }}>
+            <i className="bi bi-person-badge"></i>
+            <span>Prosumer</span>
+          </span>
         ) : (
           <span className="role-badge role-badge--operator">
             <i className="bi bi-cpu-fill"></i>

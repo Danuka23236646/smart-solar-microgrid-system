@@ -1,136 +1,267 @@
-import { API_BASE_URL, getAuthHeaders, handleApiResponse } from './apiConfig';
-import { initialNodes, initialReservations } from './mockData';
+import { API_BASE_URL, getAuthHeaders, handleApiResponse, isOfflineOrDbError } from './apiConfig';
 
-let localNodes = [...initialNodes];
+let localNodes = [];
+
+function normalizeStation(s) {
+  if (!s) return null;
+  const totalSlots = s.totalBatteryStorageSlots || s.totalSlots || 6;
+  
+  let unavailableCount = 0;
+  try {
+    const allOverrides = JSON.parse(localStorage.getItem('solargrid_slot_overrides') || '{}');
+    const stationOverrides = allOverrides[s.id] || (s.stationCode ? allOverrides[s.stationCode] : null) || {};
+    for (const key in stationOverrides) {
+      const status = stationOverrides[key]?.status;
+      if (status === 'Unavailable' || status === 'Maintenance') {
+        unavailableCount++;
+      }
+    }
+  } catch {}
+
+  const availableSlots = Math.max(0, totalSlots - unavailableCount);
+
+  return {
+    id: s.id,
+    stationCode: s.stationCode || s.id,
+    name: s.name || '',
+    address: s.address || '',
+    latitude: typeof s.latitude === 'number' ? s.latitude : parseFloat(s.latitude) || 6.9271,
+    longitude: typeof s.longitude === 'number' ? s.longitude : parseFloat(s.longitude) || 79.8612,
+    capacityKw: s.capacityKwh || 100,
+    storageCapacityKwh: s.capacityKwh || 100,
+    totalSlots,
+    availableSlots,
+    status: s.status === 'Active' ? 'Active' : 'Inactive',
+    rawStatus: s.status,
+    operatingSchedule: s.operatingSchedule || [],
+    commissionedDate: s.createdAtUtc ? s.createdAtUtc.split('T')[0] : (s.commissionedDate || '2026-01-01'),
+  };
+}
+
+const codeToIdMap = new Map();
 
 export async function getNodes(filters = {}) {
-  if (API_BASE_URL) {
-    const params = new URLSearchParams(filters).toString();
-    const response = await fetch(`${API_BASE_URL}/nodes?${params}`, { headers: getAuthHeaders() });
-    return handleApiResponse(response);
+  try {
+    const params = new URLSearchParams();
+    if (filters.search) params.append('search', filters.search);
+    if (filters.status && filters.status !== 'All') {
+      const backendStatus = filters.status === 'Inactive' ? 'Deactivated' : filters.status;
+      params.append('status', backendStatus);
+    }
+    params.append('pageSize', '50');
+
+    const response = await fetch(`${API_BASE_URL}/stations?${params.toString()}`, {
+      headers: getAuthHeaders(),
+    });
+    const result = await handleApiResponse(response);
+    const items = Array.isArray(result) ? result : (result.items || []);
+    const normalized = items.map(normalizeStation);
+    normalized.forEach((n) => {
+      if (n.stationCode && n.id) {
+        codeToIdMap.set(n.stationCode, n.id);
+        codeToIdMap.set(n.id, n.id);
+      }
+    });
+    return normalized;
+  } catch (err) {
+    if (isOfflineOrDbError(err)) {
+      await new Promise((r) => setTimeout(r, 200));
+      let result = [...localNodes];
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        result = result.filter(
+          (n) => n.name.toLowerCase().includes(q) || n.id.toLowerCase().includes(q) || n.address.toLowerCase().includes(q)
+        );
+      }
+      if (filters.status && filters.status !== 'All') {
+        result = result.filter((n) => n.status === filters.status);
+      }
+      return result;
+    }
+    throw err;
   }
+}
 
-  await new Promise((r) => setTimeout(r, 350));
-  let result = [...localNodes];
-
-  if (filters.search) {
-    const q = filters.search.toLowerCase();
-    result = result.filter(
-      (n) => n.name.toLowerCase().includes(q) || n.id.toLowerCase().includes(q) || n.address.toLowerCase().includes(q)
-    );
+async function resolveStationId(idOrCode) {
+  if (!idOrCode) throw new Error('Station ID or Code required');
+  if (/^[a-fA-F0-9]{24}$/.test(idOrCode)) {
+    return idOrCode;
   }
-
-  if (filters.status && filters.status !== 'All') {
-    result = result.filter((n) => n.status === filters.status);
+  if (codeToIdMap.has(idOrCode)) {
+    return codeToIdMap.get(idOrCode);
   }
-
-  return result;
+  const stations = await getNodes();
+  const matched = stations.find((s) => s.stationCode === idOrCode || s.id === idOrCode);
+  if (matched && matched.id) {
+    codeToIdMap.set(idOrCode, matched.id);
+    return matched.id;
+  }
+  return idOrCode;
 }
 
 export async function getNodeById(id) {
-  if (API_BASE_URL) {
-    const response = await fetch(`${API_BASE_URL}/nodes/${id}`, { headers: getAuthHeaders() });
-    return handleApiResponse(response);
+  try {
+    const stationId = await resolveStationId(id);
+    const response = await fetch(`${API_BASE_URL}/stations/${stationId}`, {
+      headers: getAuthHeaders(),
+    });
+    const result = await handleApiResponse(response);
+    return normalizeStation(result);
+  } catch (err) {
+    if (isOfflineOrDbError(err)) {
+      const node = localNodes.find((n) => n.id === id);
+      if (!node) throw new Error('Microgrid Node not found');
+      return { ...node };
+    }
+    throw err;
   }
-
-  await new Promise((r) => setTimeout(r, 250));
-  const node = localNodes.find((n) => n.id === id);
-  if (!node) throw new Error('Microgrid Node not found');
-  return { ...node };
 }
 
 export async function createNode(data) {
-  if (API_BASE_URL) {
-    const response = await fetch(`${API_BASE_URL}/nodes`, {
+  const defaultSchedule = [0, 1, 2, 3, 4, 5, 6].map((day) => ({
+    dayOfWeek: day,
+    openingTime: '08:00',
+    closingTime: '18:00',
+    isClosed: false,
+  }));
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/stations`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        stationCode: (data.id || data.stationCode || `ST-${Date.now().toString().slice(-4)}`).trim(),
+        name: (data.name || '').trim(),
+        address: (data.address || '').trim(),
+        latitude: parseFloat(data.latitude) || 6.9271,
+        longitude: parseFloat(data.longitude) || 79.8612,
+        capacityKwh: parseFloat(data.storageCapacityKwh || data.capacityKw || 100),
+        totalBatteryStorageSlots: parseInt(data.totalSlots, 10) || 6,
+        operatingSchedule: data.operatingSchedule || defaultSchedule,
+      }),
     });
-    return handleApiResponse(response);
-  }
-
-  await new Promise((r) => setTimeout(r, 450));
-  const id = data.id?.trim() || `ND-NEW-${String(localNodes.length + 1).padStart(2, '0')}`;
-  
-  if (localNodes.some((n) => n.id === id)) {
-    const err = new Error(`Node identifier ${id} is already in use.`);
-    err.code = 'DUPLICATE_NODE_ID';
+    const result = await handleApiResponse(response);
+    const normalized = normalizeStation(result);
+    if (normalized.stationCode && normalized.id) {
+      codeToIdMap.set(normalized.stationCode, normalized.id);
+    }
+    return normalized;
+  } catch (err) {
+    if (isOfflineOrDbError(err)) {
+      const id = data.id?.trim() || `ND-NEW-${String(localNodes.length + 1).padStart(2, '0')}`;
+      const newNode = {
+        id,
+        name: data.name.trim(),
+        address: data.address.trim(),
+        latitude: parseFloat(data.latitude),
+        longitude: parseFloat(data.longitude),
+        capacityKw: parseFloat(data.capacityKw),
+        storageCapacityKwh: parseFloat(data.storageCapacityKwh),
+        totalSlots: parseInt(data.totalSlots, 10) || 6,
+        availableSlots: parseInt(data.totalSlots, 10) || 6,
+        status: data.status || 'Active',
+        commissionedDate: new Date().toISOString().split('T')[0],
+      };
+      localNodes.push(newNode);
+      return newNode;
+    }
     throw err;
   }
-
-  const newNode = {
-    id,
-    name: data.name.trim(),
-    address: data.address.trim(),
-    latitude: parseFloat(data.latitude),
-    longitude: parseFloat(data.longitude),
-    capacityKw: parseFloat(data.capacityKw),
-    storageCapacityKwh: parseFloat(data.storageCapacityKwh),
-    totalSlots: parseInt(data.totalSlots, 10) || 6,
-    availableSlots: parseInt(data.totalSlots, 10) || 6,
-    status: data.status || 'Active',
-    commissionedDate: new Date().toISOString().split('T')[0],
-  };
-
-  localNodes.push(newNode);
-  return newNode;
 }
 
 export async function updateNode(id, data) {
-  if (API_BASE_URL) {
-    const response = await fetch(`${API_BASE_URL}/nodes/${id}`, {
+  try {
+    const stationId = await resolveStationId(id);
+    const response = await fetch(`${API_BASE_URL}/stations/${stationId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        name: (data.name || '').trim(),
+        address: (data.address || '').trim(),
+        latitude: parseFloat(data.latitude) || 6.9271,
+        longitude: parseFloat(data.longitude) || 79.8612,
+        capacityKwh: parseFloat(data.storageCapacityKwh || data.capacityKw || 100),
+        totalBatteryStorageSlots: parseInt(data.totalSlots, 10) || 6,
+      }),
     });
-    return handleApiResponse(response);
+    let result = await handleApiResponse(response);
+
+    // If target operational status was specified, handle activation / deactivation via dedicated endpoints
+    if (data.status) {
+      const currentStation = normalizeStation(result);
+      const targetActive = data.status === 'Active';
+      const isCurrentlyActive = currentStation?.status === 'Active';
+
+      if (targetActive && !isCurrentlyActive) {
+        const reactivateRes = await fetch(`${API_BASE_URL}/stations/${stationId}/reactivate`, {
+          method: 'PATCH',
+          headers: getAuthHeaders(),
+        });
+        result = await handleApiResponse(reactivateRes);
+      } else if (!targetActive && isCurrentlyActive) {
+        const deactivateRes = await fetch(`${API_BASE_URL}/stations/${stationId}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders(),
+        });
+        result = await handleApiResponse(deactivateRes);
+      }
+    }
+
+    window.dispatchEvent(new Event('solargrid_slots_updated'));
+    return normalizeStation(result);
+  } catch (err) {
+    if (isOfflineOrDbError(err)) {
+      const idx = localNodes.findIndex((n) => n.id === id);
+      if (idx === -1) throw new Error('Microgrid Node not found');
+      localNodes[idx] = { ...localNodes[idx], ...data };
+      window.dispatchEvent(new Event('solargrid_slots_updated'));
+      return localNodes[idx];
+    }
+    throw err;
   }
+}
 
-  await new Promise((r) => setTimeout(r, 350));
-  const idx = localNodes.findIndex((n) => n.id === id);
-  if (idx === -1) throw new Error('Microgrid Node not found');
-
-  localNodes[idx] = {
-    ...localNodes[idx],
-    ...data,
-    latitude: parseFloat(data.latitude) || localNodes[idx].latitude,
-    longitude: parseFloat(data.longitude) || localNodes[idx].longitude,
-    capacityKw: parseFloat(data.capacityKw) || localNodes[idx].capacityKw,
-    storageCapacityKwh: parseFloat(data.storageCapacityKwh) || localNodes[idx].storageCapacityKwh,
-    totalSlots: parseInt(data.totalSlots, 10) || localNodes[idx].totalSlots,
-  };
-
-  return localNodes[idx];
+export async function reactivateNode(id) {
+  try {
+    const stationId = await resolveStationId(id);
+    const response = await fetch(`${API_BASE_URL}/stations/${stationId}/reactivate`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    const result = await handleApiResponse(response);
+    window.dispatchEvent(new Event('solargrid_slots_updated'));
+    return normalizeStation(result);
+  } catch (err) {
+    if (isOfflineOrDbError(err)) {
+      const node = localNodes.find((n) => n.id === id);
+      if (!node) throw new Error('Microgrid Node not found');
+      node.status = 'Active';
+      window.dispatchEvent(new Event('solargrid_slots_updated'));
+      return node;
+    }
+    throw err;
+  }
 }
 
 export async function deactivateNode(id) {
-  if (API_BASE_URL) {
-    const response = await fetch(`${API_BASE_URL}/nodes/${id}/deactivate`, {
-      method: 'POST',
+  try {
+    const stationId = await resolveStationId(id);
+    const response = await fetch(`${API_BASE_URL}/stations/${stationId}`, {
+      method: 'DELETE',
       headers: getAuthHeaders(),
     });
-    return handleApiResponse(response);
-  }
-
-  await new Promise((r) => setTimeout(r, 400));
-  const node = localNodes.find((n) => n.id === id);
-  if (!node) throw new Error('Microgrid Node not found');
-
-  // Business Rule: Check if active or approved forward reservations exist for this node
-  const blockingReservations = initialReservations.filter(
-    (res) => res.nodeId === id && (res.status === 'Approved' || res.status === 'Pending')
-  );
-
-  if (blockingReservations.length > 0) {
-    const resIds = blockingReservations.map((r) => r.id).join(', ');
-    const err = new Error(
-      `Cannot deactivate node ${node.name} (${id}). There are ${blockingReservations.length} active or pending energy reservations scheduled (${resIds}). Reassign or cancel these reservations first.`
-    );
-    err.code = 'ACTIVE_RESERVATIONS_EXIST';
-    err.blockingReservations = blockingReservations;
+    const result = await handleApiResponse(response);
+    window.dispatchEvent(new Event('solargrid_slots_updated'));
+    return normalizeStation(result);
+  } catch (err) {
+    if (isOfflineOrDbError(err)) {
+      const node = localNodes.find((n) => n.id === id);
+      if (!node) throw new Error('Microgrid Node not found');
+      node.status = 'Inactive';
+      window.dispatchEvent(new Event('solargrid_slots_updated'));
+      return node;
+    }
     throw err;
   }
-
-  node.status = 'Inactive';
-  return node;
 }
+

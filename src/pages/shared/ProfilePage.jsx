@@ -85,10 +85,18 @@ export default function ProfilePage() {
                   <div className="text-muted-custom small">{user?.email}</div>
                   <span
                     className={`badge mt-1 ${
-                      role === 'BackofficeOfficer' ? 'bg-primary-subtle text-primary' : 'bg-success-subtle text-success'
+                      role === 'BackofficeOfficer'
+                        ? 'bg-primary-subtle text-primary border border-primary-subtle'
+                        : role === 'Prosumer'
+                        ? 'bg-warning-subtle text-warning-emphasis border border-warning-subtle'
+                        : 'bg-success-subtle text-success border border-success-subtle'
                     }`}
                   >
-                    {role === 'BackofficeOfficer' ? 'Backoffice Officer' : 'Grid Operator'}
+                    {role === 'BackofficeOfficer'
+                      ? 'Backoffice Officer'
+                      : role === 'Prosumer'
+                      ? 'Prosumer'
+                      : 'Grid Operator'}
                   </span>
                 </div>
               </div>

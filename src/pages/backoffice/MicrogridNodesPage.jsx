@@ -7,7 +7,7 @@ import DataTable from '../../components/common/DataTable';
 import StatusBadge from '../../components/common/StatusBadge';
 import ConfirmationDialog from '../../components/common/ConfirmationDialog';
 import { useNotification } from '../../context/NotificationContext';
-import { getNodes, deactivateNode } from '../../services/nodeService';
+import { getNodes, deactivateNode, reactivateNode } from '../../services/nodeService';
 
 export default function MicrogridNodesPage() {
   const navigate = useNavigate();
@@ -23,6 +23,7 @@ export default function MicrogridNodesPage() {
   const [nodeToDeactivate, setNodeToDeactivate] = useState(null);
   const [deactivationError, setDeactivationError] = useState(null);
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const [isReactivatingId, setIsReactivatingId] = useState(null);
 
   const fetchNodes = async () => {
     setIsLoading(true);
@@ -38,7 +39,28 @@ export default function MicrogridNodesPage() {
 
   useEffect(() => {
     fetchNodes();
+
+    const handleSlotsUpdated = () => {
+      fetchNodes();
+    };
+    window.addEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    return () => {
+      window.removeEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    };
   }, []);
+
+  const handleReactivate = async (node) => {
+    setIsReactivatingId(node.id);
+    try {
+      await reactivateNode(node.id);
+      showSuccess(`Substation ${node.name} successfully activated.`);
+      await fetchNodes();
+    } catch (err) {
+      showError(err.message || 'Failed to activate node.');
+    } finally {
+      setIsReactivatingId(null);
+    }
+  };
 
   const filteredNodes = useMemo(() => {
     return nodes.filter((n) => {
@@ -140,7 +162,7 @@ export default function MicrogridNodesPage() {
           >
             <i className="bi bi-pencil"></i>
           </Link>
-          {n.status === 'Active' && (
+          {n.status === 'Active' ? (
             <button
               type="button"
               className="btn btn-sm btn-outline-danger py-0 px-2"
@@ -151,6 +173,16 @@ export default function MicrogridNodesPage() {
               title="Decommission / Deactivate Node"
             >
               Deactivate
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-success py-0 px-2"
+              disabled={isReactivatingId === n.id}
+              onClick={() => handleReactivate(n)}
+              title="Reactivate Node to Accept Energy Transfers"
+            >
+              {isReactivatingId === n.id ? 'Activating...' : 'Activate'}
             </button>
           )}
         </div>

@@ -28,6 +28,14 @@ export default function OperatorNodesPage() {
 
   useEffect(() => {
     fetchNodes();
+
+    const handleSlotsUpdated = () => {
+      fetchNodes();
+    };
+    window.addEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    return () => {
+      window.removeEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    };
   }, []);
 
   const filteredNodes = nodes.filter(

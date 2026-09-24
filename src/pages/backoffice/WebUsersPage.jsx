@@ -51,7 +51,14 @@ export default function WebUsersPage() {
       const matchesSearch =
         user.name.toLowerCase().includes(search.toLowerCase()) ||
         user.email.toLowerCase().includes(search.toLowerCase());
-      const matchesRole = roleFilter === 'All' || user.role === roleFilter;
+
+      let matchesRole = true;
+      if (roleFilter === 'StaffOnly') {
+        matchesRole = user.role === 'BackofficeOfficer' || user.role === 'GridOperator' || user.role === 'Backoffice';
+      } else if (roleFilter !== 'All') {
+        matchesRole = user.role === roleFilter;
+      }
+
       const matchesStatus = statusFilter === 'All' || user.status === statusFilter;
       return matchesSearch && matchesRole && matchesStatus;
     });
@@ -68,7 +75,14 @@ export default function WebUsersPage() {
 
   const openEditModal = (user) => {
     setEditingUser(user);
-    setModalForm({ name: user.name, email: user.email, role: user.role, status: user.status });
+    setModalForm({
+      name: user.name,
+      email: user.email,
+      role: user.role === 'BackofficeOfficer' || user.role === 'Backoffice'
+        ? 'BackofficeOfficer'
+        : (user.role === 'Prosumer' ? 'Prosumer' : 'GridOperator'),
+      status: user.status,
+    });
     setIsModalOpen(true);
   };
 
@@ -123,17 +137,34 @@ export default function WebUsersPage() {
     { header: 'Email Address', accessor: 'email' },
     {
       header: 'System Role',
-      render: (u) => (
-        <span
-          className={`badge ${
-            u.role === 'BackofficeOfficer'
-              ? 'bg-primary-subtle text-primary border border-primary-subtle'
-              : 'bg-success-subtle text-success border border-success-subtle'
-          }`}
-        >
-          {u.role === 'BackofficeOfficer' ? 'Backoffice Officer' : 'Grid Operator'}
-        </span>
-      ),
+      render: (u) => {
+        if (u.role === 'BackofficeOfficer' || u.role === 'Backoffice') {
+          return (
+            <span className="badge bg-primary-subtle text-primary border border-primary-subtle">
+              Backoffice Officer
+            </span>
+          );
+        }
+        if (u.role === 'GridOperator') {
+          return (
+            <span className="badge bg-success-subtle text-success border border-success-subtle">
+              Grid Operator
+            </span>
+          );
+        }
+        if (u.role === 'Prosumer') {
+          return (
+            <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+              Prosumer
+            </span>
+          );
+        }
+        return (
+          <span className="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+            {u.role || 'User'}
+          </span>
+        );
+      },
     },
     {
       header: 'Status',
@@ -150,15 +181,25 @@ export default function WebUsersPage() {
     {
       header: 'Actions',
       render: (u) => (
-        <div className="d-flex gap-2">
-          <button
-            type="button"
-            className="btn btn-sm btn-outline-secondary py-0 px-2"
-            onClick={() => openEditModal(u)}
-            title="Edit User"
-          >
-            <i className="bi bi-pencil me-1"></i> Edit
-          </button>
+        <div className="d-flex gap-2 align-items-center">
+          {u.role === 'Prosumer' ? (
+            <a
+              href="/backoffice/prosumers"
+              className="btn btn-sm btn-outline-primary py-0 px-2 text-decoration-none"
+              title="Open Prosumer Ledger"
+            >
+              <i className="bi bi-person-lines-fill me-1"></i> View in Prosumers
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary py-0 px-2"
+              onClick={() => openEditModal(u)}
+              title="Edit User"
+            >
+              <i className="bi bi-pencil me-1"></i> Edit
+            </button>
+          )}
           <button
             type="button"
             className={`btn btn-sm py-0 px-2 ${
@@ -206,8 +247,10 @@ export default function WebUsersPage() {
           onChange={(e) => setRoleFilter(e.target.value)}
         >
           <option value="All">All Roles</option>
+          <option value="StaffOnly">Staff Only (Officers & Operators)</option>
           <option value="BackofficeOfficer">Backoffice Officer</option>
           <option value="GridOperator">Grid Operator</option>
+          <option value="Prosumer">Prosumer</option>
         </select>
         <select
           className="form-select form-select-sm"
@@ -282,7 +325,7 @@ export default function WebUsersPage() {
                     type="email"
                     id="userEmail"
                     className="form-control"
-                    placeholder="e.g. kasun@solar.local"
+                    placeholder="e.g. staff@sungrid.com"
                     value={modalForm.email}
                     onChange={(e) => setModalForm({ ...modalForm, email: e.target.value })}
                     required
@@ -293,36 +336,53 @@ export default function WebUsersPage() {
                   <label className="field-label">
                     Assigned Role <span className="required-star">*</span>
                   </label>
-                  <div className="d-flex gap-3 mt-1">
-                    <div className="form-check">
-                      <input
-                        type="radio"
-                        id="roleBackoffice"
-                        name="userRole"
-                        className="form-check-input"
-                        value="BackofficeOfficer"
-                        checked={modalForm.role === 'BackofficeOfficer'}
-                        onChange={(e) => setModalForm({ ...modalForm, role: e.target.value })}
-                      />
-                      <label htmlFor="roleBackoffice" className="form-check-label small">
-                        Backoffice Officer
-                      </label>
+                  {editingUser && editingUser.role === 'Prosumer' ? (
+                    <div className="p-2 rounded bg-light border">
+                      <div className="d-flex align-items-center gap-2 mb-1">
+                        <span className="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle py-1 px-2">
+                          <i className="bi bi-person-badge me-1"></i> Prosumer
+                        </span>
+                        <span className="small text-muted-custom">Clean Energy Producer / Consumer</span>
+                      </div>
+                      <div className="small text-muted-custom" style={{ fontSize: '0.75rem' }}>
+                        To modify solar capacity, address, or prosumer lifecycle status, visit the{' '}
+                        <a href="/backoffice/prosumers" className="text-primary text-decoration-none fw-semibold">
+                          Prosumer Directory
+                        </a>.
+                      </div>
                     </div>
-                    <div className="form-check">
-                      <input
-                        type="radio"
-                        id="roleOperator"
-                        name="userRole"
-                        className="form-check-input"
-                        value="GridOperator"
-                        checked={modalForm.role === 'GridOperator'}
-                        onChange={(e) => setModalForm({ ...modalForm, role: e.target.value })}
-                      />
-                      <label htmlFor="roleOperator" className="form-check-label small">
-                        Grid Operator
-                      </label>
+                  ) : (
+                    <div className="d-flex gap-3 mt-1">
+                      <div className="form-check">
+                        <input
+                          type="radio"
+                          id="roleBackoffice"
+                          name="userRole"
+                          className="form-check-input"
+                          value="BackofficeOfficer"
+                          checked={modalForm.role === 'BackofficeOfficer'}
+                          onChange={(e) => setModalForm({ ...modalForm, role: e.target.value })}
+                        />
+                        <label htmlFor="roleBackoffice" className="form-check-label small">
+                          Backoffice Officer
+                        </label>
+                      </div>
+                      <div className="form-check">
+                        <input
+                          type="radio"
+                          id="roleOperator"
+                          name="userRole"
+                          className="form-check-input"
+                          value="GridOperator"
+                          checked={modalForm.role === 'GridOperator'}
+                          onChange={(e) => setModalForm({ ...modalForm, role: e.target.value })}
+                        />
+                        <label htmlFor="roleOperator" className="form-check-label small">
+                          Grid Operator
+                        </label>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {!editingUser && (

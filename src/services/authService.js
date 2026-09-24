@@ -1,66 +1,42 @@
-import { API_BASE_URL, getAuthHeaders, handleApiResponse } from './apiConfig';
-import { initialUsers } from './mockData';
+import { API_BASE_URL, getAuthHeaders, handleApiResponse, isOfflineOrDbError } from './apiConfig';
 
 export async function authenticateUser(credentials) {
-  if (API_BASE_URL) {
+  const email = (credentials.identifier || credentials.email || '').trim();
+  const password = credentials.password || '';
+
+  try {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        identifier: credentials.identifier.trim(),
-        password: credentials.password,
-      }),
+      body: JSON.stringify({ email, password }),
     });
     const result = await handleApiResponse(response);
+
+    // Normalize user and role for frontend consumers
+    const normalizedRole = result.role === 'Backoffice' ? 'BackofficeOfficer' : result.role;
+    const userObj = {
+      id: result.userId,
+      name: result.fullName || 'User',
+      email: email,
+      role: normalizedRole,
+      rawRole: result.role,
+      status: 'Active',
+    };
+
     localStorage.setItem('solargrid_token', result.token);
-    localStorage.setItem('solargrid_user', JSON.stringify(result.user));
-    localStorage.setItem('solargrid_role', result.role);
-    return result;
+    localStorage.setItem('solargrid_user', JSON.stringify(userObj));
+    localStorage.setItem('solargrid_role', normalizedRole);
+
+    return {
+      token: result.token,
+      role: normalizedRole,
+      rawRole: result.role,
+      user: userObj,
+      expiryMinutes: result.expiryMinutes,
+    };
+  } catch (apiErr) {
+    throw apiErr;
   }
-
-  // Simulated latency for realistic enterprise UX
-  await new Promise((resolve) => setTimeout(resolve, 600));
-
-  const identifier = credentials.identifier.trim().toLowerCase();
-  
-  if (identifier === 'server@solar.local') {
-    const err = new Error('Centralized API Gateway is temporarily unreachable (503).');
-    err.code = 'SERVER_ERROR';
-    throw err;
-  }
-
-  // Find user by email
-  const user = initialUsers.find((u) => u.email.toLowerCase() === identifier);
-
-  if (!user || credentials.password !== 'Solar@123') {
-    const err = new Error('Invalid email or password. Please verify your credentials.');
-    err.code = 'INVALID_CREDENTIALS';
-    throw err;
-  }
-
-  if (user.status === 'Inactive') {
-    const err = new Error('Your user account has been deactivated by the system administrator.');
-    err.code = 'INACTIVE_ACCOUNT';
-    throw err;
-  }
-
-  const result = {
-    token: `jwt_token_${user.role}_${Date.now()}`,
-    role: user.role,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      status: user.status,
-    },
-  };
-
-  localStorage.setItem('solargrid_token', result.token);
-  localStorage.setItem('solargrid_user', JSON.stringify(result.user));
-  localStorage.setItem('solargrid_role', result.role);
-
-  return result;
 }
 
 export function getCurrentSession() {
@@ -90,21 +66,39 @@ export function clearSession() {
   localStorage.removeItem('solargrid_role');
 }
 
+export async function getCurrentUserProfile() {
+  const response = await fetch(`${API_BASE_URL}/users/me`, {
+    headers: getAuthHeaders(),
+  });
+  return handleApiResponse(response);
+}
+
+export async function updateCurrentUserProfile(profileData) {
+  const response = await fetch(`${API_BASE_URL}/users/me`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      fullName: profileData.name || profileData.fullName,
+      phoneNumber: profileData.phone || profileData.phoneNumber || '+94771234567',
+      address: profileData.address || 'Microgrid Operations Center',
+    }),
+  });
+  return handleApiResponse(response);
+}
+
 export async function updateUserPassword(userId, currentPassword, newPassword) {
-  if (API_BASE_URL) {
-    const response = await fetch(`${API_BASE_URL}/users/${userId}/password`, {
-      method: 'PUT',
+  try {
+    const response = await fetch(`${API_BASE_URL}/users/me/change-password`, {
+      method: 'PATCH',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ currentPassword, newPassword }),
+      body: JSON.stringify({
+        currentPassword,
+        newPassword,
+        confirmNewPassword: newPassword,
+      }),
     });
     return handleApiResponse(response);
-  }
-
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  if (currentPassword !== 'Solar@123') {
-    const err = new Error('Current password does not match our records.');
-    err.code = 'PASSWORD_MISMATCH';
+  } catch (err) {
     throw err;
   }
-  return { success: true, message: 'Password updated successfully.' };
 }

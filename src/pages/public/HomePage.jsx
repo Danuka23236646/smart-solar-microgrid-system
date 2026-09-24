@@ -25,6 +25,9 @@ export default function HomePage() {
           </Link>
 
           <div className="d-flex align-items-center gap-3">
+            <Link to="/register" className="btn btn-outline-secondary text-decoration-none">
+              <i className="bi bi-person-plus me-1"></i> Register as Prosumer
+            </Link>
             <Link to="/login" className="btn-primary-custom text-decoration-none">
               <i className="bi bi-box-arrow-in-right me-1"></i> Sign In to Portal
             </Link>
@@ -54,6 +57,9 @@ export default function HomePage() {
               <div className="d-flex flex-wrap gap-3 justify-content-center justify-content-lg-start">
                 <Link to="/login" className="btn btn-warning btn-lg fw-semibold px-4 text-dark">
                   Access Portal <i className="bi bi-arrow-right ms-1"></i>
+                </Link>
+                <Link to="/register" className="btn btn-outline-light btn-lg fw-semibold px-4">
+                  <i className="bi bi-person-plus me-1"></i> Register as Prosumer
                 </Link>
               </div>
             </div>

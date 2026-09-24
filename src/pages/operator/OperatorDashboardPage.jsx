@@ -7,12 +7,22 @@ import StatusBadge from '../../components/common/StatusBadge';
 import { useNotification } from '../../context/NotificationContext';
 import { getNodes } from '../../services/nodeService';
 import { getReservations } from '../../services/reservationService';
+import { verifyQr, completeEnergyTransfer } from '../../services/qrService';
 
 export default function OperatorDashboardPage() {
-  const { showError } = useNotification();
+  const { showSuccess, showError } = useNotification();
   const [nodes, setNodes] = useState([]);
   const [reservations, setReservations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // QR Modal State
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [qrPayload, setQrPayload] = useState('');
+  const [qrVerifyResult, setQrVerifyResult] = useState(null);
+  const [actualEnergyKwh, setActualEnergyKwh] = useState('');
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrCompleteLoading, setQrCompleteLoading] = useState(false);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -32,6 +42,14 @@ export default function OperatorDashboardPage() {
 
   useEffect(() => {
     fetchData();
+
+    const handleSlotsUpdated = () => {
+      fetchData();
+    };
+    window.addEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    return () => {
+      window.removeEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    };
   }, []);
 
   const pendingCount = reservations.filter((r) => r.status === 'Pending').length;
@@ -84,6 +102,45 @@ export default function OperatorDashboardPage() {
     },
   ];
 
+  const handleVerifyQr = async (e) => {
+    e.preventDefault();
+    if (!qrPayload.trim()) return;
+    setQrLoading(true);
+    setQrVerifyResult(null);
+    try {
+      const res = await verifyQr(qrPayload);
+      setQrVerifyResult(res);
+      setActualEnergyKwh(String(res.expectedEnergyAmountKwh || ''));
+      if (!res.isValid) {
+        showError(res.message || 'QR code validation failed.');
+      }
+    } catch (err) {
+      showError(err.message || 'QR verification request failed.');
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  const handleCompleteTransfer = async (e) => {
+    e.preventDefault();
+    if (!qrPayload.trim() || !actualEnergyKwh) return;
+    setQrCompleteLoading(true);
+    try {
+      const res = await completeEnergyTransfer(qrPayload, actualEnergyKwh, completionNotes);
+      showSuccess(res.message || 'Energy transfer completed successfully.');
+      setIsQrModalOpen(false);
+      setQrPayload('');
+      setQrVerifyResult(null);
+      setActualEnergyKwh('');
+      setCompletionNotes('');
+      await fetchData();
+    } catch (err) {
+      showError(err.message || 'Failed to complete energy transfer.');
+    } finally {
+      setQrCompleteLoading(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -91,6 +148,13 @@ export default function OperatorDashboardPage() {
         description="Monitor active energy dispatches, substation frequency stability, and modular battery bay states."
         actions={
           <div className="d-flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsQrModalOpen(true)}
+              className="btn btn-warning d-flex align-items-center gap-1 shadow-sm"
+            >
+              <i className="bi bi-qr-code-scan"></i> QR Verification & Complete
+            </button>
             <button type="button" onClick={fetchData} className="btn-secondary-custom">
               <i className="bi bi-arrow-repeat me-1"></i> Refresh Telemetry
             </button>
@@ -243,6 +307,172 @@ export default function OperatorDashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Phase 4 QR Verification & Completion Modal */}
+      {isQrModalOpen && (
+        <div
+          className="modal fade show d-block"
+          tabIndex="-1"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}
+        >
+          <div className="modal-dialog modal-dialog-centered modal-lg">
+            <div className="modal-content shadow-lg border-0">
+              <div className="modal-header bg-dark text-white">
+                <h5 className="modal-title d-flex align-items-center gap-2 fs-6">
+                  <i className="bi bi-qr-code-scan text-warning"></i>
+                  <span>Secure QR Transaction Verification & Transfer Completion</span>
+                </h5>
+                <button
+                  type="button"
+                  className="btn-close btn-close-white"
+                  onClick={() => {
+                    setIsQrModalOpen(false);
+                    setQrVerifyResult(null);
+                  }}
+                  aria-label="Close"
+                ></button>
+              </div>
+              <div className="modal-body p-4">
+                {/* Step 1: Payload Input */}
+                <form onSubmit={handleVerifyQr} className="mb-4">
+                  <label htmlFor="qrInput" className="form-label fw-semibold small text-muted-custom">
+                    SCAN OR PASTE QR PAYLOAD TOKEN (FORMAT: SUNGRID:&lt;TOKEN&gt;)
+                  </label>
+                  <div className="input-group">
+                    <input
+                      id="qrInput"
+                      type="text"
+                      className="form-control font-monospace"
+                      placeholder="SUNGRID:4a8b7c9d..."
+                      value={qrPayload}
+                      onChange={(e) => setQrPayload(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn-primary-custom px-3"
+                      disabled={qrLoading || !qrPayload.trim()}
+                    >
+                      {qrLoading ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                          Verifying...
+                        </>
+                      ) : (
+                        <>
+                          <i className="bi bi-shield-check me-1"></i> Verify QR
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+
+                {/* Step 2: Verification Details */}
+                {qrVerifyResult && (
+                  <div className={`rounded p-3 border mb-3 ${qrVerifyResult.isValid ? 'bg-success-subtle border-success' : 'bg-danger-subtle border-danger'}`}>
+                    <div className="d-flex align-items-center justify-content-between mb-2">
+                      <span className={`fw-bold small ${qrVerifyResult.isValid ? 'text-success' : 'text-danger'}`}>
+                        <i className={`bi ${qrVerifyResult.isValid ? 'bi-check-circle-fill' : 'bi-x-circle-fill'} me-1`}></i>
+                        {qrVerifyResult.isValid ? 'VALID QR PAYLOAD DETECTED' : 'INVALID / UNMATCHED QR TOKEN'}
+                      </span>
+                      {qrVerifyResult.canComplete && (
+                        <span className="badge bg-success">Transfer Window Active</span>
+                      )}
+                    </div>
+
+                    {qrVerifyResult.isValid ? (
+                      <div className="row g-2 small text-dark mt-1">
+                        <div className="col-sm-6">
+                          <span className="text-muted">Reservation Ref:</span>{' '}
+                          <strong className="font-monospace">{qrVerifyResult.reservationReference}</strong>
+                        </div>
+                        <div className="col-sm-6">
+                          <span className="text-muted">Prosumer:</span>{' '}
+                          <strong>{qrVerifyResult.prosumerName}</strong> ({qrVerifyResult.prosumerNic || 'NIC Verified'})
+                        </div>
+                        <div className="col-sm-6">
+                          <span className="text-muted">Substation:</span>{' '}
+                          <strong>{qrVerifyResult.stationName}</strong> ({qrVerifyResult.stationCode})
+                        </div>
+                        <div className="col-sm-6">
+                          <span className="text-muted">Transfer Type:</span>{' '}
+                          <span className="badge bg-info-subtle text-info-emphasis">{qrVerifyResult.transferType}</span>
+                        </div>
+                        <div className="col-sm-6">
+                          <span className="text-muted">Expected Volume:</span>{' '}
+                          <strong>{qrVerifyResult.expectedEnergyAmountKwh} kWh</strong>
+                        </div>
+                        <div className="col-sm-6">
+                          <span className="text-muted">Status:</span>{' '}
+                          <span className="badge bg-primary-subtle text-primary">{qrVerifyResult.reservationStatus}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-danger small">{qrVerifyResult.message}</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 3: Completion Form */}
+                {qrVerifyResult?.isValid && (
+                  <form onSubmit={handleCompleteTransfer} className="border-top pt-3">
+                    <div className="row g-3 mb-3">
+                      <div className="col-sm-6">
+                        <label className="form-label fw-semibold small">Actual Metered Energy (kWh) *</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          className="form-control"
+                          value={actualEnergyKwh}
+                          onChange={(e) => setActualEnergyKwh(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="col-sm-6">
+                        <label className="form-label fw-semibold small">Completion Audit Notes (Optional)</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="Meter check OK / Bay validated"
+                          value={completionNotes}
+                          onChange={(e) => setCompletionNotes(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="d-flex justify-content-end gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setIsQrModalOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn btn-success d-flex align-items-center gap-1"
+                        disabled={qrCompleteLoading || !actualEnergyKwh}
+                      >
+                        {qrCompleteLoading ? (
+                          <>
+                            <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                            Finalizing Transfer...
+                          </>
+                        ) : (
+                          <>
+                            <i className="bi bi-check-all"></i> Finalize & Complete Transfer
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

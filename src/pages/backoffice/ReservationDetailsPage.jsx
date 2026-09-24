@@ -57,7 +57,7 @@ export default function ReservationDetailsPage() {
 
   // Calculate remaining hours to execution
   const executionTimeMs = new Date(reservation.scheduledStartTime).getTime();
-  const nowMs = new Date('2026-09-17T17:00:00Z').getTime();
+  const nowMs = Date.now();
   const diffHours = (executionTimeMs - nowMs) / (1000 * 60 * 60);
   const isWithin12Hours = diffHours >= 0 && diffHours < 12;
 

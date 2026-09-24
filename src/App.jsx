@@ -9,6 +9,7 @@ import RoleProtectedRoute from './components/common/RoleProtectedRoute';
 // Public Pages
 import HomePage from './pages/public/HomePage';
 import LoginPage from './pages/public/LoginPage';
+import RegisterPage from './pages/public/RegisterPage';
 import UnauthorizedPage from './pages/public/UnauthorizedPage';
 import NotFoundPage from './pages/public/NotFoundPage';
 
@@ -41,6 +42,7 @@ export default function App() {
       {/* Public Routes */}
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
       {/* Authenticated Layout Routes */}

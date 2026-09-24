@@ -12,7 +12,7 @@ export default function NodeSchedulePage() {
   const { showSuccess, showError } = useNotification();
 
   const [nodes, setNodes] = useState([]);
-  const [selectedNodeId, setSelectedNodeId] = useState(id || 'ND-NO-01');
+  const [selectedNodeId, setSelectedNodeId] = useState(id || '');
   const [schedules, setSchedules] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -30,12 +30,19 @@ export default function NodeSchedulePage() {
   const loadData = async (nodeId) => {
     setIsLoading(true);
     try {
-      const [allNodes, schedList] = await Promise.all([
-        getNodes(),
-        getNodeSchedules(nodeId),
-      ]);
+      const allNodes = await getNodes();
       setNodes(allNodes);
-      setSchedules(schedList);
+
+      const activeId = nodeId || id || (allNodes.length > 0 ? allNodes[0].id : '');
+      if (activeId) {
+        if (!selectedNodeId || selectedNodeId !== activeId) {
+          setSelectedNodeId(activeId);
+        }
+        const schedList = await getNodeSchedules(activeId);
+        setSchedules(schedList);
+      } else {
+        setSchedules([]);
+      }
     } catch {
       showError('Failed to fetch node schedule windows.');
     } finally {
@@ -45,7 +52,7 @@ export default function NodeSchedulePage() {
 
   useEffect(() => {
     loadData(selectedNodeId);
-  }, [selectedNodeId]);
+  }, [selectedNodeId, id]);
 
   const handleNodeChange = (newId) => {
     setSelectedNodeId(newId);

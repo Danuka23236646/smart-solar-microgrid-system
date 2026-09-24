@@ -12,7 +12,7 @@ export default function BatterySlotsPage() {
   const { showSuccess, showError } = useNotification();
 
   const [nodes, setNodes] = useState([]);
-  const [selectedNodeId, setSelectedNodeId] = useState(id || 'ND-NO-01');
+  const [selectedNodeId, setSelectedNodeId] = useState(id || '');
   const [slots, setSlots] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -25,12 +25,19 @@ export default function BatterySlotsPage() {
   const loadSlots = async (nodeId) => {
     setIsLoading(true);
     try {
-      const [nodeList, slotList] = await Promise.all([
-        getNodes(),
-        getBatterySlots(nodeId),
-      ]);
+      const nodeList = await getNodes();
       setNodes(nodeList);
-      setSlots(slotList);
+
+      const activeId = nodeId || id || (nodeList.length > 0 ? nodeList[0].id : '');
+      if (activeId) {
+        if (!selectedNodeId || selectedNodeId !== activeId) {
+          setSelectedNodeId(activeId);
+        }
+        const slotList = await getBatterySlots(activeId);
+        setSlots(slotList);
+      } else {
+        setSlots([]);
+      }
     } catch {
       showError('Failed to load battery bay slots.');
     } finally {
@@ -40,7 +47,15 @@ export default function BatterySlotsPage() {
 
   useEffect(() => {
     loadSlots(selectedNodeId);
-  }, [selectedNodeId]);
+
+    const handleSlotsUpdated = () => {
+      loadSlots(selectedNodeId);
+    };
+    window.addEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    return () => {
+      window.removeEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    };
+  }, [selectedNodeId, id]);
 
   const handleNodeChange = (newId) => {
     setSelectedNodeId(newId);
@@ -75,7 +90,7 @@ export default function BatterySlotsPage() {
 
   const availableCount = slots.filter((s) => s.status === 'Available').length;
   const reservedCount = slots.filter((s) => s.status === 'Reserved').length;
-  const unavailableCount = slots.filter((s) => s.status === 'Unavailable').length;
+  const unavailableCount = slots.filter((s) => s.status === 'Unavailable' || s.status === 'Maintenance').length;
 
   return (
     <div>
@@ -169,15 +184,25 @@ export default function BatterySlotsPage() {
                   <div className="small mb-2">
                     <div className="d-flex justify-content-between mb-1">
                       <span className="text-muted-custom">State of Charge:</span>
-                      <span className="fw-semibold">{slot.soc}%</span>
+                      <span className="fw-semibold">
+                        {slot.status === 'Unavailable' || slot.status === 'Maintenance'
+                          ? '0% (Offline)'
+                          : slot.status === 'Reserved'
+                          ? '100% (Reserved)'
+                          : `${slot.soc}% (Ready)`}
+                      </span>
                     </div>
                     <div className="progress" style={{ height: '6px' }}>
                       <div
                         className={`progress-bar ${
-                          slot.soc > 50 ? 'bg-success' : slot.soc > 20 ? 'bg-warning' : 'bg-danger'
+                          slot.status === 'Unavailable' || slot.status === 'Maintenance'
+                            ? 'bg-secondary'
+                            : slot.status === 'Reserved'
+                            ? 'bg-warning'
+                            : 'bg-success'
                         }`}
                         role="progressbar"
-                        style={{ width: `${slot.soc}%` }}
+                        style={{ width: `${slot.status === 'Unavailable' || slot.status === 'Maintenance' ? 0 : slot.soc}%` }}
                         aria-valuenow={slot.soc}
                         aria-valuemin="0"
                         aria-valuemax="100"
@@ -188,7 +213,16 @@ export default function BatterySlotsPage() {
                   <div className="d-flex justify-content-between small text-muted-custom mb-2">
                     <span>Operating Temp:</span>
                     <span className="fw-semibold text-dark">
-                      {slot.tempC > 0 ? `${slot.tempC} °C` : 'Offline'}
+                      {slot.status === 'Unavailable' || slot.status === 'Maintenance' || slot.tempC <= 0
+                        ? 'Offline'
+                        : `${slot.tempC} °C (Nominal)`}
+                    </span>
+                  </div>
+
+                  <div className="d-flex justify-content-between small text-muted-custom mb-2">
+                    <span>Bay Capacity:</span>
+                    <span className="fw-semibold text-dark">
+                      {slot.totalCapacity} kWh
                     </span>
                   </div>
 

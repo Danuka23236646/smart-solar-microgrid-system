@@ -130,12 +130,12 @@ export default function NodeFormPage() {
               description="Basic facility naming and address information."
             >
               <div className="col-12 col-md-4">
-                <label className="field-label" htmlFor="nodeId">
+                <label className="field-label" htmlFor="stationNodeCode">
                   Substation Node Code <span className="required-star">*</span>
                 </label>
                 <input
                   type="text"
-                  id="nodeId"
+                  id="stationNodeCode"
                   className="form-control font-monospace"
                   placeholder="e.g. ND-CENTRAL-01"
                   value={formData.id}
@@ -147,12 +147,12 @@ export default function NodeFormPage() {
               </div>
 
               <div className="col-12 col-md-8">
-                <label className="field-label" htmlFor="nodeName">
+                <label className="field-label" htmlFor="stationDisplayName">
                   Substation Display Name <span className="required-star">*</span>
                 </label>
                 <input
                   type="text"
-                  id="nodeName"
+                  id="stationDisplayName"
                   className="form-control"
                   placeholder="e.g. Central District Primary Substation"
                   value={formData.name}
@@ -162,12 +162,12 @@ export default function NodeFormPage() {
               </div>
 
               <div className="col-12">
-                <label className="field-label" htmlFor="nodeAddress">
+                <label className="field-label" htmlFor="stationAddress">
                   Physical Facility Location / Address <span className="required-star">*</span>
                 </label>
                 <input
                   type="text"
-                  id="nodeAddress"
+                  id="stationAddress"
                   className="form-control"
                   placeholder="Street, City, Sector"
                   value={formData.address}

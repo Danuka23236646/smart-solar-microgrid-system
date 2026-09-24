@@ -194,7 +194,7 @@ export default function Sidebar({ isOpen, onClose }) {
               <div className="overflow-hidden" style={{ maxWidth: '130px' }}>
                 <div className="text-truncate fw-semibold small text-white">{user?.name || 'User'}</div>
                 <div className="text-truncate text-muted-custom" style={{ fontSize: '0.7rem' }}>
-                  {role === 'BackofficeOfficer' ? 'Backoffice Officer' : 'Grid Operator'}
+                  {role === 'BackofficeOfficer' ? 'Backoffice Officer' : (role === 'Prosumer' ? 'Prosumer' : 'Grid Operator')}
                 </div>
               </div>
             </div>

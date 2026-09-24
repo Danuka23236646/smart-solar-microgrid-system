@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 
@@ -38,7 +38,7 @@ export default function LoginPage() {
 
       if (fromPath && fromPath !== '/login' && fromPath !== '/') {
         navigate(fromPath, { replace: true });
-      } else if (result.role === 'BackofficeOfficer') {
+      } else if (result.role === 'BackofficeOfficer' || result.role === 'Backoffice') {
         navigate('/backoffice/dashboard', { replace: true });
       } else if (result.role === 'GridOperator') {
         navigate('/operator/dashboard', { replace: true });
@@ -50,9 +50,9 @@ export default function LoginPage() {
     }
   };
 
-  const setDemoCredentials = (email) => {
+  const setDemoCredentials = (email, pass = 'AdminPassword123!') => {
     setIdentifier(email);
-    setPassword('Solar@123');
+    setPassword(pass);
     setValidationError('');
     setApiError('');
   };
@@ -148,7 +148,7 @@ export default function LoginPage() {
                   type="email"
                   id="identifier"
                   className="form-control border-start-0"
-                  placeholder="e.g. officer@solar.local"
+                  placeholder="e.g. admin@sungrid.com"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   autoComplete="username"
@@ -219,28 +219,35 @@ export default function LoginPage() {
             </button>
           </form>
 
+          <div className="text-center mt-3 mb-1">
+            <span className="text-muted-custom small">Don't have an account? </span>
+            <Link to="/register" className="fw-semibold text-primary text-decoration-none small">
+              Register as Prosumer
+            </Link>
+          </div>
+
           {/* Quick Evaluator Helper Box */}
           <div className="mt-4 pt-3 border-top">
             <div className="d-flex align-items-center justify-content-between mb-2">
               <span className="text-muted-custom fw-semibold" style={{ fontSize: '0.72rem' }}>
-                EVALUATION CREDENTIAL SHORTCUTS:
+                SEEDED CREDENTIAL SHORTCUTS:
               </span>
               <span className="badge text-bg-light border small" style={{ fontSize: '0.65rem' }}>
-                Pwd: Solar@123
+                SunGrid Backend Core
               </span>
             </div>
             <div className="d-flex gap-2">
               <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary w-50 small"
-                onClick={() => setDemoCredentials('officer@solar.local')}
+                onClick={() => setDemoCredentials('admin@sungrid.com', 'AdminPassword123!')}
               >
-                <i className="bi bi-shield-check me-1 text-primary"></i>Backoffice
+                <i className="bi bi-shield-check me-1 text-primary"></i>Admin (Backoffice)
               </button>
               <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary w-50 small"
-                onClick={() => setDemoCredentials('operator@solar.local')}
+                onClick={() => setDemoCredentials('operator@sungrid.com', 'OperatorPassword123!')}
               >
                 <i className="bi bi-cpu me-1 text-success"></i>Grid Operator
               </button>

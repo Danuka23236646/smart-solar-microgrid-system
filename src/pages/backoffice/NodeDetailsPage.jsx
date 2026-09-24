@@ -5,7 +5,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import DataTable from '../../components/common/DataTable';
 import ConfirmationDialog from '../../components/common/ConfirmationDialog';
 import { useNotification } from '../../context/NotificationContext';
-import { getNodeById, deactivateNode } from '../../services/nodeService';
+import { getNodeById, deactivateNode, reactivateNode } from '../../services/nodeService';
 import { getNodeSchedules } from '../../services/scheduleService';
 import { getReservations } from '../../services/reservationService';
 
@@ -20,6 +20,7 @@ export default function NodeDetailsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const [isReactivating, setIsReactivating] = useState(false);
   const [showDeactivateModal, setShowDeactivateModal] = useState(false);
   const [deactivateError, setDeactivateError] = useState(null);
 
@@ -44,6 +45,14 @@ export default function NodeDetailsPage() {
 
   useEffect(() => {
     fetchData();
+
+    const handleSlotsUpdated = () => {
+      fetchData();
+    };
+    window.addEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    return () => {
+      window.removeEventListener('solargrid_slots_updated', handleSlotsUpdated);
+    };
   }, [id]);
 
   const handleDeactivate = async () => {
@@ -59,6 +68,19 @@ export default function NodeDetailsPage() {
       showError('Deactivation rejected by central API.');
     } finally {
       setIsDeactivating(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    setIsReactivating(true);
+    try {
+      await reactivateNode(id);
+      showSuccess(`Node ${node.name} successfully reactivated.`);
+      await fetchData();
+    } catch (err) {
+      showError(err.message || 'Failed to reactivate node.');
+    } finally {
+      setIsReactivating(false);
     }
   };
 
@@ -112,7 +134,7 @@ export default function NodeDetailsPage() {
             <Link to={`/backoffice/nodes/${node.id}/edit`} className="btn-primary-custom">
               <i className="bi bi-pencil me-1"></i> Edit Configuration
             </Link>
-            {node.status === 'Active' && (
+            {node.status === 'Active' ? (
               <button
                 type="button"
                 className="btn-danger-custom"
@@ -122,6 +144,17 @@ export default function NodeDetailsPage() {
                 }}
               >
                 Deactivate Node
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-primary-custom"
+                style={{ backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+                disabled={isReactivating}
+                onClick={handleReactivate}
+              >
+                <i className="bi bi-play-circle me-1"></i>
+                {isReactivating ? 'Reactivating...' : 'Reactivate Node'}
               </button>
             )}
           </div>
