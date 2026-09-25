@@ -88,25 +88,10 @@ export default function LoginPage() {
           </p>
 
           {/* Microgrid Illustration Placeholder */}
-          <div
-            className="rounded p-3 border border-secondary border-opacity-25"
-            style={{ backgroundColor: 'rgba(255, 255, 255, 0.04)', maxWidth: '420px' }}
-          >
-            <div className="d-flex align-items-center justify-content-between mb-2">
-              <span className="text-white-50 font-monospace small">C# WEB API CORE</span>
-              <span className="badge bg-success-subtle text-success">Online</span>
-            </div>
-            <div className="small text-white-50">
-              <div className="mb-1"><i className="bi bi-check2 text-success me-2"></i>Automated 7-Day Trading Window</div>
-              <div className="mb-1"><i className="bi bi-check2 text-success me-2"></i>12-Hour Cancellation Rule Lock</div>
-              <div><i className="bi bi-check2 text-success me-2"></i>Role-Governed API JWT Authorization</div>
-            </div>
-          </div>
+          
         </div>
 
-        <div className="text-white-50 small pt-4 mt-auto border-top border-secondary border-opacity-25">
-          SE4040 Enterprise Application Development &copy; 2026
-        </div>
+        
       </div>
 
       {/* Right Login Panel */}

@@ -19,6 +19,22 @@ function normalizeStation(s) {
   } catch {}
 
   const availableSlots = Math.max(0, totalSlots - unavailableCount);
+  const capacity = s.capacityKwh || 600;
+  const received = s.receivedEnergyKwh || 0;
+  const dispatched = s.dispatchedEnergyKwh || 0;
+  const netStored = Math.max(0, received - dispatched);
+  const currentStored = typeof s.currentStoredEnergyKwh === 'number'
+    ? s.currentStoredEnergyKwh
+    : Math.min(capacity, netStored);
+  const availableIntake = typeof s.availableIntakeKwh === 'number'
+    ? s.availableIntakeKwh
+    : Math.max(0, Math.round((capacity - currentStored) * 100) / 100);
+  const batteryPct = typeof s.batteryStoragePercentage === 'number'
+    ? s.batteryStoragePercentage
+    : (capacity > 0 ? Math.min(100, Math.round((currentStored / capacity) * 100)) : 0);
+  const isOutOfStorage = typeof s.isOutOfStorage === 'boolean'
+    ? s.isOutOfStorage
+    : (availableSlots <= 0 || availableIntake <= 0);
 
   return {
     id: s.id,
@@ -27,18 +43,18 @@ function normalizeStation(s) {
     address: s.address || '',
     latitude: typeof s.latitude === 'number' ? s.latitude : parseFloat(s.latitude) || 6.9271,
     longitude: typeof s.longitude === 'number' ? s.longitude : parseFloat(s.longitude) || 79.8612,
-    capacityKw: s.capacityKwh || 100,
-    storageCapacityKwh: s.capacityKwh || 100,
+    capacityKw: capacity,
+    storageCapacityKwh: capacity,
     totalSlots,
     availableSlots,
-    receivedEnergyKwh: s.receivedEnergyKwh || 0,
-    dispatchedEnergyKwh: s.dispatchedEnergyKwh || 0,
-    currentStoredEnergyKwh: typeof s.currentStoredEnergyKwh === 'number' ? s.currentStoredEnergyKwh : Math.min(s.capacityKwh || 600, Math.max(0, (s.receivedEnergyKwh || 0) - (s.dispatchedEnergyKwh || 0))),
-    availableIntakeKwh: typeof s.availableIntakeKwh === 'number' ? s.availableIntakeKwh : Math.max(0, (s.capacityKwh || 600) - (s.currentStoredEnergyKwh || 0)),
-    batteryStoragePercentage: typeof s.batteryStoragePercentage === 'number' ? s.batteryStoragePercentage : (s.capacityKwh ? Math.min(100, Math.round(((s.currentStoredEnergyKwh || 0) / s.capacityKwh) * 100)) : 0),
-    netEnergyStoredKwh: typeof s.netEnergyStoredKwh === 'number' ? s.netEnergyStoredKwh : Math.round(((s.receivedEnergyKwh || 0) - (s.dispatchedEnergyKwh || 0)) * 100) / 100,
-    isOutOfStorage: typeof s.isOutOfStorage === 'boolean' ? s.isOutOfStorage : (availableSlots <= 0),
-    canReceiveEnergy: typeof s.canReceiveEnergy === 'boolean' ? s.canReceiveEnergy : (availableSlots > 0 && s.status === 'Active'),
+    receivedEnergyKwh: received,
+    dispatchedEnergyKwh: dispatched,
+    currentStoredEnergyKwh: currentStored,
+    availableIntakeKwh: availableIntake,
+    batteryStoragePercentage: batteryPct,
+    netEnergyStoredKwh: typeof s.netEnergyStoredKwh === 'number' ? s.netEnergyStoredKwh : Math.round(netStored * 100) / 100,
+    isOutOfStorage: isOutOfStorage,
+    canReceiveEnergy: typeof s.canReceiveEnergy === 'boolean' ? s.canReceiveEnergy : (!isOutOfStorage && availableSlots > 0 && s.status === 'Active'),
     status: s.status === 'Active' ? 'Active' : 'Inactive',
     rawStatus: s.status,
     operatingSchedule: s.operatingSchedule || [],
